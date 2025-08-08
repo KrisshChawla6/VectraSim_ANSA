@@ -1,0 +1,11 @@
+{
+    "mesh_types": [
+        "fea_mid", "cfd_shell", "fea_solid", "cfd_volume"
+    ],
+    "mesh_type_selected": "fea_mid",
+    "define_meshing_params": true,
+    "ansa_mpars_path": ".ansa_mpar",
+    "custom_user_inputs": {
+        "target_element_length": 1.0
+    }
+}
