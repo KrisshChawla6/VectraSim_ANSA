@@ -38,6 +38,8 @@ def shell_meshing(**kwargs):
 
     ret_val = batchmesh.RunMeshingScenario(scenario)
     print(ret_val)
+
+    base.SaveFileAsStep("test.stp")
     
 
 if __name__ == '__main__':

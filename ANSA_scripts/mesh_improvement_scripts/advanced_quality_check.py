@@ -4,7 +4,7 @@ from ansa import base, mesh
 DECK = base.CurrentDeck()
 SHELL_TYPE = "ELEMENT_SHELL"
 SECTION_SHELL = "SECTION_SHELL"
-NEIGHBOR_LEVEL = 3
+NEIGHBOR_LEVEL = 1
 
 
 def get_bad_shells(shells):
@@ -67,29 +67,25 @@ def isolate_and_fix(shells_to_fix):
         print("  ⚠ Still poor-quality shells after Reshape")
 
 
-def isolate_and_fix(shells_to_fix):
-    """Show and fix only the visible shells using the fix sequence."""
-    all_shells = base.CollectEntities(DECK, None, SHELL_TYPE, True)
-    base.Not(all_shells)
-    base.Or(entities=shells_to_fix)
-    mesh.FixQuality()
-    mesh.Reconstruct()
-    mesh.Reshape()
-    base.All()
-
-
 def get_remaining_bad_shells(exclude_shells):
     """Get all bad shells that are not in the excluded set."""
     all_shells = base.CollectEntities(DECK, None, SHELL_TYPE, True)
     return [s for s in get_bad_shells(all_shells) if s not in exclude_shells]
 
 
-def main():
+def advanced_quality_check():
     print("Starting localized mesh fix pipeline...")
+
+    fix_bad_shells_per_area()
+
+def fix_bad_shells_per_area():
+    """Iteratively isolate and fix each bad shell area until all are processed."""
+    processed_shells = set()
 
     all_shells = base.CollectEntities(DECK, None, SHELL_TYPE, True)
     bad_shells_remaining = get_bad_shells(all_shells)
-    processed_shells = set()
+
+    print(bad_shells_remaining)
 
     while bad_shells_remaining:
         target_shell = bad_shells_remaining[0]
@@ -121,8 +117,7 @@ def main():
         bad_shells_remaining = get_remaining_bad_shells(processed_shells)
         all_shells = base.CollectEntities(DECK, None, SHELL_TYPE, True)
 
-    print("\n✅ All bad mesh features processed and fixed.")
-
+    print("\nAll poor-quality shells processed.")
 
 if __name__ == "__main__":
-    main()
+    advanced_quality_check()

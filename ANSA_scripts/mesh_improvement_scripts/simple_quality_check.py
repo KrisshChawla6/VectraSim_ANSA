@@ -52,7 +52,7 @@ def restore_shells_property(shells, target_pid=None):
         base.SetEntityCardValues(DECK, shell, {"PID": target_pid})
 
 
-def fix_bad_shells(shells, fix_sequence):
+def fix_bad_shells_together(shells, fix_sequence):
     """Apply a sequence of mesh fixing functions to improve quality."""
     for fix_func in fix_sequence:
         bad_shells = get_bad_shells(shells)
@@ -93,7 +93,7 @@ def main():
     # Define the fix sequence
     fix_sequence = [mesh.FixQuality, mesh.Reconstruct, mesh.Reshape]
 
-    fix_bad_shells(shells, fix_sequence)
+    fix_bad_shells_together(shells, fix_sequence)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ def mid_surf_meshing(**kwargs):
     result = base.MidSurfAuto(
         thick=1.0,
         faces=all_faces,
+        length=8.0,
         elem_type=3,
         join_distance=35,
         join_distance_as_percentage=True,
