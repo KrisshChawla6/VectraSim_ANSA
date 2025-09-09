@@ -1,18 +1,14 @@
 # PYTHON script
 import sys
 
-CONDA_ENV = 'C:\\ProgramData\\anaconda3\\Lib\\site-packages'
+CONDA_ENV = "C:\\ProgramData\\anaconda3\\Lib\\site-packages"
 sys.path.append(CONDA_ENV)
 
-import PIL
-import trimesh
 
-import os
-import ansa
 import json
 import numpy as np
 
-from ansa import base, constants, mesh
+from ansa import base
 
 # ANSA file I/O scripts
 from ansa_mesh_agent.io import load_mesh
@@ -32,6 +28,7 @@ def find_mesh_corners(vertices, faces, node_ids, angle_threshold_deg=120):
     corner_node_ids -- list of node ids at corners
     """
     from collections import defaultdict
+
     node_neighbors = defaultdict(set)
     # faces contains indices into vertices (and node_ids)
     for face in faces:
@@ -59,14 +56,14 @@ def find_mesh_corners(vertices, faces, node_ids, angle_threshold_deg=120):
         # 3. Project vectors to plane and get 2D coordinates
         vecs_2d = np.stack([[np.dot(vec, u), np.dot(vec, v)] for vec in vectors])
         # 4. Compute angles for sorting
-        angles = np.arctan2(vecs_2d[:,1], vecs_2d[:,0])
+        angles = np.arctan2(vecs_2d[:, 1], vecs_2d[:, 0])
         order = np.argsort(angles)
         ordered_vecs = vecs_2d[order]
         # 5. Sum angles between consecutive ordered vectors
         angle_sum = 0.0
         for i in range(len(ordered_vecs)):
             v1 = ordered_vecs[i]
-            v2 = ordered_vecs[(i+1)%len(ordered_vecs)]
+            v2 = ordered_vecs[(i + 1) % len(ordered_vecs)]
             norm1 = np.linalg.norm(v1)
             norm2 = np.linalg.norm(v2)
             if norm1 == 0 or norm2 == 0:
@@ -103,11 +100,11 @@ def main():
     Vg, Fg, NidG, EidG, ThG = load_mesh(cad_path)
     Vm, Fm, NidM, EidM, ThM = load_mesh(mid_path)
 
-    
-
-
     # Import json file of issues
-    with open("D:\\OneDrive - Stanford\\VectraSim files\\Lucid\\CAD from Lucid\\issues.json", "r") as f:
+    with open(
+        "D:\\OneDrive - Stanford\\VectraSim files\\Lucid\\CAD from Lucid\\issues.json",
+        "r",
+    ) as f:
         issues = json.load(f)
 
     M_nodes_far = issues["M_nodes_far"]
@@ -115,12 +112,11 @@ def main():
     M_nodes_bad_thickness = issues["M_nodes_bad_thickness"]
 
     base.All()
-    
 
     # 1. Correct meshes with spurious M nodes
 
     # 2. Correct meshes with spurious G nodes
-    
+
     # Find corners in the mid-surface mesh (Vm, Fm, NidM)
     mid_corners = find_mesh_corners(Vm, Fm, NidM, angle_threshold_deg=120)
     print("Mid-surface mesh corner node ids:", mid_corners)
@@ -148,7 +144,10 @@ def main():
             # Find the index of the node with the largest min distance
             furthest_idx = np.argmax(min_dists)
             furthest_node_id = NidG[G_z_indices[furthest_idx]]
-            furthest_nodes[z_val] = {"id": furthest_node_id, "coords": G_z_coords[furthest_idx]}
+            furthest_nodes[z_val] = {
+                "id": furthest_node_id,
+                "coords": G_z_coords[furthest_idx],
+            }
 
         print("Furthest G_nodes_far node with Z=0:", furthest_nodes[0]["id"])
         print("Furthest G_nodes_far node with Z=1:", furthest_nodes[1]["id"])
@@ -158,19 +157,24 @@ def main():
             base.CurrentDeck(),
             "NODE",
             {
-                "X": 0.5 * (furthest_nodes[0]["coords"][0] + furthest_nodes[1]["coords"][0]),
-                "Y": 0.5 * (furthest_nodes[0]["coords"][1] + furthest_nodes[1]["coords"][1]),
-                "Z": 0.5 * (furthest_nodes[0]["coords"][2] + furthest_nodes[1]["coords"][2]),
+                "X": 0.5
+                * (furthest_nodes[0]["coords"][0] + furthest_nodes[1]["coords"][0]),
+                "Y": 0.5
+                * (furthest_nodes[0]["coords"][1] + furthest_nodes[1]["coords"][1]),
+                "Z": 0.5
+                * (furthest_nodes[0]["coords"][2] + furthest_nodes[1]["coords"][2]),
             },
         )
 
         # Find the closest corners to the new point, to create the new element
         # Coordinates of the new node
-        new_node_coords = np.array([
-            0.5 * (furthest_nodes[0]["coords"][0] + furthest_nodes[1]["coords"][0]),
-            0.5 * (furthest_nodes[0]["coords"][1] + furthest_nodes[1]["coords"][1]),
-            0.5 * (furthest_nodes[0]["coords"][2] + furthest_nodes[1]["coords"][2]),
-        ])
+        new_node_coords = np.array(
+            [
+                0.5 * (furthest_nodes[0]["coords"][0] + furthest_nodes[1]["coords"][0]),
+                0.5 * (furthest_nodes[0]["coords"][1] + furthest_nodes[1]["coords"][1]),
+                0.5 * (furthest_nodes[0]["coords"][2] + furthest_nodes[1]["coords"][2]),
+            ]
+        )
 
         # Compute distances from all Vm nodes to the new node
         dists_to_new = np.linalg.norm(Vm - new_node_coords, axis=1)
@@ -182,8 +186,10 @@ def main():
         # For just the single closest node:
         closest_index = np.argmin(dists_to_new)
 
-        print("Indices of closest nodes in Vm:", closest_indices[:2])  # e.g., first 2 closest
-        
+        print(
+            "Indices of closest nodes in Vm:", closest_indices[:2]
+        )  # e.g., first 2 closest
+
         shell1 = base.CollectEntities(base.CurrentDeck(), None, "ELEMENT_SHELL")[0]
 
         # Create a new element connecting the new node to the closest corner nodes
@@ -191,14 +197,15 @@ def main():
             base.CurrentDeck(),
             "ELEMENT_SHELL",
             {
-                "type": "TRIA", 
-                "PID": shell1.get_entity_values(base.CurrentDeck(), ("EID", "PID"))["PID"],
+                "type": "TRIA",
+                "PID": shell1.get_entity_values(base.CurrentDeck(), ("EID", "PID"))[
+                    "PID"
+                ],
                 "N1": mid_corners[closest_indices[0]],
                 "N2": mid_corners[closest_indices[1]],
                 "N3": new_node._id,
-            }
+            },
         )
-        
 
     # 3. Correct meshes with bad M node thickness
 

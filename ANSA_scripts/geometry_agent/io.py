@@ -1,8 +1,14 @@
+#
+# Scripts to load INP files quickly, extracting nodes, elements, and nodal thickness.
+#
+# ==========================
+
 import numpy as np
 import concurrent.futures
 
+
 def parse_node_line(line):
-    parts = [p.strip() for p in line.split(',')]
+    parts = [p.strip() for p in line.split(",")]
     if len(parts) >= 4:
         nid = int(parts[0])
         x = float(parts[1])
@@ -11,26 +17,29 @@ def parse_node_line(line):
         return nid, (x, y, z)
     return None
 
+
 def parse_elem_line(line):
-    parts = [p.strip() for p in line.split(',')]
+    parts = [p.strip() for p in line.split(",")]
     if len(parts) >= 4:
         eid = int(parts[0])
         nids = [int(n) for n in parts[1:] if n]
         return eid, nids
     return None
 
+
 def parse_thickness_line(line):
-    parts = [p.strip() for p in line.split(',')]
+    parts = [p.strip() for p in line.split(",")]
     if len(parts) >= 2:
         nid = int(parts[0])
         thick = float(parts[1])
         return nid, thick
     return None
 
+
 def load_mesh(path):
     """
     Fast parser for INP files to extract nodes and elements, with corresponding ANSA id arrays.
-    
+
     Arguments:
     path -- path to the INP file
 
@@ -46,27 +55,27 @@ def load_mesh(path):
     elem_lines = []
     thickness_lines = []
     mode = None
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('**'):
+            if not line or line.startswith("**"):
                 continue
-            if line.startswith('*'):
+            if line.startswith("*"):
                 uline = line.upper()
-                if uline.startswith('*NODE'):
-                    mode = 'node'
-                elif uline.startswith('*ELEMENT'):
-                    mode = 'elem'
-                elif uline.startswith('*NODAL THICKNESS'):
-                    mode = 'thickness'
+                if uline.startswith("*NODE"):
+                    mode = "node"
+                elif uline.startswith("*ELEMENT"):
+                    mode = "elem"
+                elif uline.startswith("*NODAL THICKNESS"):
+                    mode = "thickness"
                 else:
                     mode = None
                 continue
-            if mode == 'node':
+            if mode == "node":
                 node_lines.append(line)
-            elif mode == 'elem':
+            elif mode == "elem":
                 elem_lines.append(line)
-            elif mode == 'thickness':
+            elif mode == "thickness":
                 thickness_lines.append(line)
 
     # Parallel parse nodes
@@ -97,14 +106,13 @@ def load_mesh(path):
     node_id_to_index = {nid: idx for idx, nid in enumerate(node_ids)}
     vertices = np.array([nodes[i] for i in node_ids])
     elem_ids = np.array(list(elems.keys()))
-    faces = [ [node_id_to_index[n] for n in elems[eid]] for eid in elem_ids ]
+    faces = [[node_id_to_index[n] for n in elems[eid]] for eid in elem_ids]
     faces = np.array(faces, dtype=object)
     thickness = np.array([nodal_thickness.get(i, np.nan) for i in node_ids])
     return vertices, faces, node_ids, elem_ids, thickness
 
 
 if __name__ == "__main__":
-    
     cad_path = "C:\\Users\\HowardWu\\test.inp"
     mid_path = "C:\\Users\\HowardWu\\test_mid.inp"
 
@@ -113,4 +121,3 @@ if __name__ == "__main__":
 
     print(f"Loaded INP with {len(vertices_G)} vertices and {len(faces_G)} faces.")
     print(f"Loaded INP with {len(vertices_M)} vertices and {len(faces_M)} faces.")
-

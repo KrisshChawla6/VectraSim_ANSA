@@ -1,8 +1,6 @@
 # PYTHON script
 import os
 import json
-import ansa
-from ansa import base, mesh, constants, batchmesh
 
 from mid_surf_meshing import mid_surf_meshing
 from solid_meshing import solid_meshing
@@ -21,8 +19,9 @@ def main():
     mpars_path = input_config.get("ansa_mpars_path", None)
     custom_mpars_inputs = input_config.get("custom_user_inputs", {})
     if len(custom_mpars_inputs) > 0:
+
         def update_mpars_with_custom_inputs(file_path, updates):
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             for i, line in enumerate(lines):
@@ -30,7 +29,7 @@ def main():
                     if line.strip().startswith(f"{key} ="):
                         lines[i] = f"    {key} = {value}\n"
 
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
 
         update_mpars_with_custom_inputs(mpars_path, custom_mpars_inputs)

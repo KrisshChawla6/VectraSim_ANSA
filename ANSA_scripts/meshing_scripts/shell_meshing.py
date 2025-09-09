@@ -1,8 +1,7 @@
 # PYTHON script
 import os
-import ansa
 
-from ansa import base, constants, mesh, batchmesh
+from ansa import base, batchmesh
 
 
 def shell_meshing(**kwargs):
@@ -15,10 +14,10 @@ def shell_meshing(**kwargs):
 
     # Get the current deck
     current_deck = base.CurrentDeck()
-    
+
     # Show all
     base.All()
-    
+
     # Using the batchmesh module
     # New meshing scenario
     scenario = batchmesh.GetNewMeshingScenario("Name", "scenario_with_all_parts")
@@ -40,9 +39,7 @@ def shell_meshing(**kwargs):
     print(ret_val)
 
     base.SaveFileAsStep("test.stp")
-    
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     shell_meshing()
-
-

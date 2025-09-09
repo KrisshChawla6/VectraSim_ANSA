@@ -1,17 +1,17 @@
 # PYTHON script
 import os
-import ansa
-from ansa import base, mesh, constants, batchmesh
+from ansa import base, mesh
+
 
 def solid_meshing(**kwargs):
     # Get current script directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     print(script_dir)
-    
+
     # Get the current deck
     current_deck = base.CurrentDeck()
     print("Current deck:", current_deck)
-    
+
     vol = mesh.VolumesDetect()
 
     ents = base.CollectEntities(current_deck, None, "VOLUME")
@@ -26,7 +26,7 @@ def solid_meshing(**kwargs):
     # parts = base.CollectEntities(current_deck, None, "ANSAPART")
     # print(parts)
     # ret_val = batchmesh.AddPartToMeshingScenario(parts, vol_scen)
-    
+
     # # New meshing session
     # session = batchmesh.GetNewVolumeSession("MySession")
     # part = parts[0]
@@ -38,10 +38,9 @@ def solid_meshing(**kwargs):
     # print(mpar_path)
     # ret_val = batchmesh.ReadSessionMeshParams(session, mpar_path)
     # print(ret_val)
-    
+
     # status = batchmesh.RunMeshingScenario(vol_scen)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     solid_meshing()
-
-

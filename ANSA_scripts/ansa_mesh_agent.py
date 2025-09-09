@@ -1,37 +1,41 @@
-# This script is intended to handle the whole pipeline: 
-# 	Mesh creation -> Geometry analysis & improvements -> Shell quality analysis & improvements -> File export
-# 
+#
+# This is v1 of the ANSA mesh agent, intended to handle the whole pipeline of:
+# - Mesh creation
+# - Geometry analysis & improvements (using geometry_agent). V2 as standalone agent is under geometry_llm_agent.py
+# - Shell quality analysis & improvements (Not yet implemented, please refer to shell_quality_llm_agent.py)
+# - File export
+#
+#
 # This file should be made possible to run as an ANSA script
+#
+# ==========================
 
 import sys
 
 from geometry_agent.io import load_mesh
 
-CONDA_ENV = 'C:\\ProgramData\\anaconda3\\Lib\\site-packages'	# Change if necessary. To import external libraries into ANSA environment
+CONDA_ENV = "C:\\ProgramData\\anaconda3\\Lib\\site-packages"  # Change if necessary. To import external libraries into ANSA environment
 sys.path.append(CONDA_ENV)
 
 import os
-import ansa
 import json
 import numpy as np
 from collections import defaultdict
 
-from ansa import base, constants, mesh, guitk
-
-import trimesh
+from ansa import base, constants
 
 # ANSA meshing scripts
-from meshing_scripts.shell_meshing import shell_meshing
-from meshing_scripts.mid_surf_meshing import mid_surf_meshing
+from meshing_scripts import shell_meshing, mid_surf_meshing
 
 # ANSA File I/O scripts
-from geometry_agent.ansa_scripts.mid_mesh_export import mid_mesh_export
-from geometry_agent.ansa_scripts.shell_mesh_export import shell_mesh_export
+from geometry_agent.mesh_export.shell_mesh_export import shell_mesh_export
+from geometry_agent.mesh_export.mid_mesh_export import mid_mesh_export
 
 # Mesh analysis using external script and Abaqus exports
 from geometry_agent import agent as geom_agent
 
-from mesh_improvement_scripts.advanced_quality_check import advanced_quality_check
+# Mesh improvement using ANSA Improve module
+from ansa_improve.advanced_quality_improve import advanced_quality_check
 
 DECK = base.CurrentDeck()
 SHELL_TYPE = "ELEMENT_SHELL"
@@ -40,185 +44,255 @@ NEIGHBOR_LEVEL = 1
 
 
 def main(model_path: str = None):
-	base.All()
+    base.All()
 
-	debug = True
+    debug = True
 
-	current_model = base.GetCurrentAnsaModel()
+    current_model = base.GetCurrentAnsaModel()
 
-	if not current_model:
-		base.Open(model_path)
-		current_model = base.GetCurrentAnsaModel()
+    if not current_model:
+        base.Open(model_path)
+        current_model = base.GetCurrentAnsaModel()
 
-	# Parse model_path to get current directory
-	print(constants.FILENAME)
-	model_path = "D:\OneDrive - Stanford\VectraSim files\Lucid\CAD from Lucid\Air_FTB_CAD.step.ansa" if not model_path else model_path
-	current_dir = os.path.dirname(model_path)
+    # Parse model_path to get current directory
+    print(constants.FILENAME)
+    model_path = (
+        "D:\OneDrive - Stanford\VectraSim files\Lucid\CAD from Lucid\Air_FTB_CAD.step.ansa"
+        if not model_path
+        else model_path
+    )
+    current_dir = os.path.dirname(model_path)
 
-	if not debug:
-		print("Debug mode is off")
-	else:	# Move this to suitable line for skipping certain part of the code during debugging
+    if not debug:
+        print("Debug mode is off")
+    else:  # Move this to suitable line for skipping certain part of the code during debugging
+        # A. Meshing
+        # A1. Mesh model as shell
+        shell_mesh_file = "shell_mesh.inp"
+        shell_mesh_inp_path = os.path.join(current_dir, shell_mesh_file)
+        if os.path.exists(shell_mesh_inp_path):
+            # Check if mesh already exists
+            print(
+                f"Mesh file {shell_mesh_file} already exists in {current_dir}. Skipping shell meshing."
+            )
+        else:
+            shell_mesh = shell_meshing()
+            shell_mesh_inp_path = shell_mesh_export(shell_mesh_inp_path)
+            base.Open(model_path)  # Re-open the original geometry
 
-		# A. Meshing
-		# A1. Mesh model as shell
-		shell_mesh_file = "shell_mesh.inp"
-		shell_mesh_inp_path = os.path.join(current_dir, shell_mesh_file)
-		if os.path.exists(shell_mesh_inp_path):
-			# Check if mesh already exists
-			print(f"Mesh file {shell_mesh_file} already exists in {current_dir}. Skipping shell meshing.")
-		else:
-			shell_mesh = shell_meshing()
-			shell_mesh_inp_path = shell_mesh_export(shell_mesh_inp_path)
-			base.Open(model_path)	# Re-open the original geometry
+        # A2. Mesh model as mid surface
+        mid_surf_mesh_filename = "mid_surf_mesh.inp"
+        mid_mesh_inp_path = os.path.join(current_dir, mid_surf_mesh_filename)
+        if os.path.exists(mid_mesh_inp_path):
+            # Check if mesh already exists
+            print(
+                f"Mesh file {mid_surf_mesh_filename} already exists in {current_dir}. Skipping mid surface meshing."
+            )
+        else:
+            mid_surf_mesh = mid_surf_meshing()
+            mid_mesh_inp_path = mid_mesh_export(mid_mesh_inp_path)
 
-		# A2. Mesh model as mid surface
-		mid_surf_mesh_filename = "mid_surf_mesh.inp"
-		mid_mesh_inp_path = os.path.join(current_dir, mid_surf_mesh_filename)
-		if os.path.exists(mid_mesh_inp_path):
-			# Check if mesh already exists
-			print(f"Mesh file {mid_surf_mesh_filename} already exists in {current_dir}. Skipping mid surface meshing.")
-		else:
-			mid_surf_mesh = mid_surf_meshing()
-			mid_mesh_inp_path = mid_mesh_export(mid_mesh_inp_path)
+        # B. Perform geometry analysis & correction
+        base.All()
+        current_model = base.GetCurrentAnsaModel()
 
-		# B. Perform geometry analysis & correction
-		base.All()
-		current_model = base.GetCurrentAnsaModel()
+        # B1. Identify and delete intersections
+        intersection_elements = base.CheckIntersections(True, False, False)
+        if intersection_elements:
+            base.DeleteEntity(intersection_elements)
+            mid_mesh_inp_path = mid_mesh_export(
+                os.path.join(current_dir, mid_surf_mesh_filename)
+            )
 
-		# B1. Identify and delete intersections
-		intersection_elements = base.CheckIntersections(True,False,False)
-		if intersection_elements:
-			base.DeleteEntity(intersection_elements)
-			mid_mesh_inp_path = mid_mesh_export(os.path.join(current_dir, mid_surf_mesh_filename))
+        # B2. Build trimesh model and perform analysis for geometry coverage
+        geom_agent.run_agent(shell_mesh_inp_path, mid_mesh_inp_path, current_dir)
 
-		# B2. Build trimesh model and perform analysis for geometry coverage
-		geom_agent.run_agent(shell_mesh_inp_path, mid_mesh_inp_path, current_dir)
+        # Read in issues.json file 1st time
+        with open(os.path.join(current_dir, "issues.json"), "r") as f:
+            issues = json.load(f)
 
-		# Read in issues.json file 1st time
-		with open(os.path.join(current_dir, 'issues.json'), 'r') as f:
-			issues = json.load(f)
+        (
+            M_nodes_far,
+            M_nodes_far_vec_to_move,
+            M_nodes_bad_cos,
+            G_nodes_far,
+            G_elems_far,
+            M_nodes_bad_thickness,
+            closest_node_M,
+            M_removed_nodes,
+            elem_M_w_removed_nodes,
+        ) = extract_issues()
 
-		M_nodes_far, M_nodes_far_vec_to_move, M_nodes_bad_cos, G_nodes_far, G_elems_far, M_nodes_bad_thickness, closest_node_M, M_removed_nodes, elem_M_w_removed_nodes = extract_issues()
+        while M_nodes_far or G_nodes_far or M_nodes_bad_thickness:
+            review_issues()
 
-		while M_nodes_far or G_nodes_far or M_nodes_bad_thickness:
-			review_issues()
-			
-			# Export corrected mid mesh for re-evaluation
-			mid_mesh_inp_path = mid_mesh_export(os.path.join(current_dir, mid_surf_mesh_filename))
-			geom_agent.run_agent(shell_mesh_inp_path, mid_mesh_inp_path, current_dir)
+            # Export corrected mid mesh for re-evaluation
+            mid_mesh_inp_path = mid_mesh_export(
+                os.path.join(current_dir, mid_surf_mesh_filename)
+            )
+            geom_agent.run_agent(shell_mesh_inp_path, mid_mesh_inp_path, current_dir)
 
-			# Re-import issues.json
-			with open(os.path.join(current_dir, 'issues.json'), 'r') as f:
-				issues = json.load(f)
+            # Re-import issues.json
+            with open(os.path.join(current_dir, "issues.json"), "r") as f:
+                issues = json.load(f)
 
-		def extract_issues():
-			# Process issues as needed
-			M_nodes_far = issues.get('M_nodes_far', [])
-			M_nodes_far_vec_to_move = issues.get('M_nodes_far_vec_to_move', [])
-			M_nodes_bad_cos = issues.get('M_nodes_bad_cos', [])
-			G_nodes_far = issues.get('G_nodes_far', [])
-			G_elems_far = issues.get('G_elems_far', [])	# Caveat: G_elems_far refers to ** M elements ** that fail dG->M checks 
-			M_nodes_bad_thickness = issues.get('M_nodes_bad_thickness', [])
-			closest_node_M = issues.get('closest_node_M', [])
-			M_removed_nodes = issues.get('M_removed_nodes', [])
-			elem_M_w_removed_nodes = issues.get('elem_M_w_removed_nodes', [])
+        def extract_issues():
+            # Process issues as needed
+            M_nodes_far = issues.get("M_nodes_far", [])
+            M_nodes_far_vec_to_move = issues.get("M_nodes_far_vec_to_move", [])
+            M_nodes_bad_cos = issues.get("M_nodes_bad_cos", [])
+            G_nodes_far = issues.get("G_nodes_far", [])
+            G_elems_far = issues.get(
+                "G_elems_far", []
+            )  # Caveat: G_elems_far refers to ** M elements ** that fail dG->M checks
+            M_nodes_bad_thickness = issues.get("M_nodes_bad_thickness", [])
+            closest_node_M = issues.get("closest_node_M", [])
+            M_removed_nodes = issues.get("M_removed_nodes", [])
+            elem_M_w_removed_nodes = issues.get("elem_M_w_removed_nodes", [])
 
-			return M_nodes_far, M_nodes_far_vec_to_move, M_nodes_bad_cos, G_nodes_far, G_elems_far, M_nodes_bad_thickness, closest_node_M, M_removed_nodes, elem_M_w_removed_nodes
+            return (
+                M_nodes_far,
+                M_nodes_far_vec_to_move,
+                M_nodes_bad_cos,
+                G_nodes_far,
+                G_elems_far,
+                M_nodes_bad_thickness,
+                closest_node_M,
+                M_removed_nodes,
+                elem_M_w_removed_nodes,
+            )
 
-		def review_issues():
-			M_nodes_far, M_nodes_far_vec_to_move, M_nodes_bad_cos, G_nodes_far, G_elems_far, M_nodes_bad_thickness, closest_node_M, M_removed_nodes, elem_M_w_removed_nodes = extract_issues()
+        def review_issues():
+            (
+                M_nodes_far,
+                M_nodes_far_vec_to_move,
+                M_nodes_bad_cos,
+                G_nodes_far,
+                G_elems_far,
+                M_nodes_bad_thickness,
+                closest_node_M,
+                M_removed_nodes,
+                elem_M_w_removed_nodes,
+            ) = extract_issues()
 
-			# Delete elements that can be degenerate (when triangulated) from the model
-			for elem in elem_M_w_removed_nodes:
-				element = base.GetEntity(DECK, SHELL_TYPE, elem)
-				if element:
-					base.DeleteEntity(element)
+            # Delete elements that can be degenerate (when triangulated) from the model
+            for elem in elem_M_w_removed_nodes:
+                element = base.GetEntity(DECK, SHELL_TYPE, elem)
+                if element:
+                    base.DeleteEntity(element)
 
-			# C. Correcting the mesh
-			all_shells = base.CollectEntities(DECK, None, SHELL_TYPE, True)
+            # C. Correcting the mesh
+            all_shells = base.CollectEntities(DECK, None, SHELL_TYPE, True)
 
-			# C1. Correct poor geometry coverage
-			base.SetEntityVisibilityValues(DECK, {"NODE": "enable"})
+            # C1. Correct poor geometry coverage
+            base.SetEntityVisibilityValues(DECK, {"NODE": "enable"})
 
-			if M_nodes_far:
-				for idx, node_id in enumerate(M_nodes_far):
-					print(node_id)
-					node = base.GetEntity(DECK, "NODE", node_id)
-					# Move node
-					coords = node.get_entity_values(DECK, ('X', 'Y', 'Z'))
-					curr_X = coords['X']
-					curr_Y = coords['Y']
-					curr_Z = coords['Z']
-					vec_to_move = M_nodes_far_vec_to_move[idx]
-					new_X, new_Y, new_Z = [curr_X + vec_to_move[0], curr_Y + vec_to_move[1], curr_Z + vec_to_move[2]]
-					base.SetEntityCardValues(DECK, node, {"X": new_X, "Y": new_Y, "Z": new_Z})
+            if M_nodes_far:
+                for idx, node_id in enumerate(M_nodes_far):
+                    print(node_id)
+                    node = base.GetEntity(DECK, "NODE", node_id)
+                    # Move node
+                    coords = node.get_entity_values(DECK, ("X", "Y", "Z"))
+                    curr_X = coords["X"]
+                    curr_Y = coords["Y"]
+                    curr_Z = coords["Z"]
+                    vec_to_move = M_nodes_far_vec_to_move[idx]
+                    new_X, new_Y, new_Z = [
+                        curr_X + vec_to_move[0],
+                        curr_Y + vec_to_move[1],
+                        curr_Z + vec_to_move[2],
+                    ]
+                    base.SetEntityCardValues(
+                        DECK, node, {"X": new_X, "Y": new_Y, "Z": new_Z}
+                    )
 
-			if G_nodes_far:
-				# Read in CAD surface mesh
-				cad_path = os.path.join(current_dir, shell_mesh_file)
-				Vg_orig, Fg_orig, NidG_orig, EidG_orig, ThG_orig = load_mesh(cad_path)
-				
-				# Read in singular edges
-				singular_edges = issues["M_singular_edges"]
+            if G_nodes_far:
+                # Read in CAD surface mesh
+                cad_path = os.path.join(current_dir, shell_mesh_file)
+                Vg_orig, Fg_orig, NidG_orig, EidG_orig, ThG_orig = load_mesh(cad_path)
 
-				for idx, node_id in enumerate(G_nodes_far):
-					closest_M = closest_node_M[idx]
-					print(f"Closest M node for G node {node_id}: {closest_M}")
+                # Read in singular edges
+                singular_edges = issues["M_singular_edges"]
 
-					node = base.GetEntity(DECK, "NODE", closest_M)
-					elem = base.GetEntity(DECK, SHELL_TYPE, G_elems_far[idx])
+                for idx, node_id in enumerate(G_nodes_far):
+                    closest_M = closest_node_M[idx]
+                    print(f"Closest M node for G node {node_id}: {closest_M}")
 
-					base.Not(all_shells)
-					base.Or(entities=node)
-					base.Or(entities=elem)
-					base.Neighb('1')
+                    node = base.GetEntity(DECK, "NODE", closest_M)
+                    elem = base.GetEntity(DECK, SHELL_TYPE, G_elems_far[idx])
 
-					# TODO: 
-					# The following currently connects all visible singular edges to the G node in question via TRIA elements. 
-					# However, given in each region there could be multiple G nodes being marked, one should use one/a few best G nodes as new nodes to create connecting elements. 
-					# Or this could also require corrections that simply change the thickness of the elements
-					# 
-					visib_nodes = base.CollectEntities(DECK, None, "NODE", True, filter_visible=True)
-					visib_nodes_ids = [n._id for n in visib_nodes]
-					
-					print(visib_nodes_ids)
+                    base.Not(all_shells)
+                    base.Or(entities=node)
+                    base.Or(entities=elem)
+                    base.Neighb("1")
 
-					visib_singular_edges = []
-					for (n1, n2) in singular_edges:
-						if n1 in visib_nodes_ids and n2 in visib_nodes_ids:
-							visib_singular_edges.append((n1, n2))
+                    # TODO:
+                    # The following currently connects all visible singular edges to the G node in question via TRIA elements.
+                    # However, given in each region there could be multiple G nodes being marked, one should use one/a few best G nodes as new nodes to create connecting elements.
+                    # Or this could also require corrections that simply change the thickness of the elements
+                    #
+                    visib_nodes = base.CollectEntities(
+                        DECK, None, "NODE", True, filter_visible=True
+                    )
+                    visib_nodes_ids = [n._id for n in visib_nodes]
 
-					print(visib_singular_edges)
+                    print(visib_nodes_ids)
 
-					G_node_idx = np.where(NidG_orig == node_id)[0][0]
-					G_node_coords = Vg_orig[G_node_idx]
+                    visib_singular_edges = []
+                    for n1, n2 in singular_edges:
+                        if n1 in visib_nodes_ids and n2 in visib_nodes_ids:
+                            visib_singular_edges.append((n1, n2))
 
-					print(G_node_coords)
+                    print(visib_singular_edges)
 
-					new_node = base.CreateEntity(DECK, "NODE", {"X": G_node_coords[0], "Y": G_node_coords[1], "Z": G_node_coords[2]})
+                    G_node_idx = np.where(NidG_orig == node_id)[0][0]
+                    G_node_coords = Vg_orig[G_node_idx]
 
-					for (n1, n2) in visib_singular_edges:
-						new_elem = base.CreateEntity(DECK, SHELL_TYPE, {"type": "TRIA", "PID": elem.get_entity_values(DECK, ("EID", "PID"))["PID"], "N1": n1, "N2": n2, "N3": new_node._id})
+                    print(G_node_coords)
 
-					# TODO:
-					# Need to find a way to check for poor mesh coverage.
-					# 	For the shown M submesh rerun the coverage checks?
-					# Then need a way to understand gaps and fill the holes -> agent need to understand 3D geometry
-					#  
-					# if (problem still exist):
-					# 	Apply correction to M to better represent G
+                    new_node = base.CreateEntity(
+                        DECK,
+                        "NODE",
+                        {
+                            "X": G_node_coords[0],
+                            "Y": G_node_coords[1],
+                            "Z": G_node_coords[2],
+                        },
+                    )
 
-			base.SetEntityVisibilityValues(DECK, {"NODE": "off"})
-			base.All()
+                    for n1, n2 in visib_singular_edges:
+                        new_elem = base.CreateEntity(
+                            DECK,
+                            SHELL_TYPE,
+                            {
+                                "type": "TRIA",
+                                "PID": elem.get_entity_values(DECK, ("EID", "PID"))[
+                                    "PID"
+                                ],
+                                "N1": n1,
+                                "N2": n2,
+                                "N3": new_node._id,
+                            },
+                        )
 
-		
-		# C. Perform mesh quality analysis & correction
-		base.All()
-		advanced_quality_check()
+                    # TODO:
+                    # Need to find a way to check for poor mesh coverage.
+                    # 	For the shown M submesh rerun the coverage checks?
+                    # Then need a way to understand gaps and fill the holes -> agent need to understand 3D geometry
+                    #
+                    # if (problem still exist):
+                    # 	Apply correction to M to better represent G
+
+            base.SetEntityVisibilityValues(DECK, {"NODE": "off"})
+            base.All()
+
+        # C. Perform mesh quality analysis & correction
+        base.All()
+        advanced_quality_check()
 
 
-if __name__ == '__main__':
-	main()
+if __name__ == "__main__":
+    main()
 
 
 def find_mesh_corners(vertices, faces, node_ids, angle_threshold_deg=120):
@@ -261,14 +335,14 @@ def find_mesh_corners(vertices, faces, node_ids, angle_threshold_deg=120):
         # 3. Project vectors to plane and get 2D coordinates
         vecs_2d = np.stack([[np.dot(vec, u), np.dot(vec, v)] for vec in vectors])
         # 4. Compute angles for sorting
-        angles = np.arctan2(vecs_2d[:,1], vecs_2d[:,0])
+        angles = np.arctan2(vecs_2d[:, 1], vecs_2d[:, 0])
         order = np.argsort(angles)
         ordered_vecs = vecs_2d[order]
         # 5. Sum angles between consecutive ordered vectors
         angle_sum = 0.0
         for i in range(len(ordered_vecs)):
             v1 = ordered_vecs[i]
-            v2 = ordered_vecs[(i+1)%len(ordered_vecs)]
+            v2 = ordered_vecs[(i + 1) % len(ordered_vecs)]
             norm1 = np.linalg.norm(v1)
             norm2 = np.linalg.norm(v2)
             if norm1 == 0 or norm2 == 0:
@@ -283,4 +357,3 @@ def find_mesh_corners(vertices, faces, node_ids, angle_threshold_deg=120):
         if angle_sum < 180.0:
             corner_node_ids.append(node_ids[idx])
     return corner_node_ids
-

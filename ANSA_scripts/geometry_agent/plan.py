@@ -1,3 +1,9 @@
+#
+# Dummy planning module to fix geometry problems for the geometry agent
+#
+# ==========================
+
+
 def choose_fix(patch, issue_type="missing_feature"):
     """
     Map issue -> fix type
