@@ -72,3 +72,6 @@ Dockerfile
 conda_environment.yml
 conda_packages_exact.txt
 conda_requirements.txt
+
+# Environment variable files
+.env
